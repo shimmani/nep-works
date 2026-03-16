@@ -1,0 +1,51 @@
+{
+  "name": "nep-works",
+  "version": "1.0.0",
+  "description": "엔이피 업무 자동화 시스템",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "package": "electron-vite build && electron-builder"
+  },
+  "keywords": [],
+  "author": "NEP",
+  "license": "ISC",
+  "dependencies": {
+    "@ant-design/icons": "^6.1.0",
+    "antd": "^6.3.2",
+    "better-sqlite3": "^12.8.0",
+    "dayjs": "^1.11.20",
+    "electron": "^41.0.2",
+    "exceljs": "^4.4.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  },
+  "build": {
+    "appId": "com.nep.works",
+    "productName": "NEP-WORKS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "templates/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
