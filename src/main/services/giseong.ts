@@ -1,6 +1,8 @@
 import { ipcMain } from 'electron'
 import Database from 'better-sqlite3'
 import { IPC_CHANNELS } from '../../shared/types'
+import { logAudit } from './audit'
+import { validateGiseongRound, validateGiseongRate } from './validation'
 
 export function registerGiseongHandlers(db: Database.Database): void {
   // 기성 회차 목록
@@ -17,33 +19,47 @@ export function registerGiseongHandlers(db: Database.Database): void {
     return db.prepare('SELECT * FROM giseong_rounds WHERE id = ?').get(roundId)
   })
 
-  // 기성 회차 생성
-  ipcMain.handle(IPC_CHANNELS.GISEONG_ROUND_CREATE, (_event, data: { project_id: number }) => {
+  // 기성 회차 생성 (검증 포함)
+  ipcMain.handle(IPC_CHANNELS.GISEONG_ROUND_CREATE, (_event, data: { project_id: number; confirmed?: boolean }) => {
     const { project_id } = data
 
-    // 다음 회차 번호
-    const last = db.prepare(
-      'SELECT MAX(round_no) as max_no FROM giseong_rounds WHERE project_id = ?'
-    ).get(project_id) as { max_no: number | null }
-    const nextRound = (last.max_no || 0) + 1
-
-    // 설계내역 항목 가져오기
+    // 설계내역 항목
     const designItems = db.prepare(
       'SELECT * FROM design_items WHERE project_id = ? ORDER BY sort_order'
     ).all(project_id) as Array<{ id: number; total_price: number }>
 
-    if (designItems.length === 0) {
-      throw new Error('설계내역이 등록되지 않았습니다. 먼저 설계내역서를 임포트해주세요.')
+    // 기존 회차
+    const existingRounds = db.prepare(
+      'SELECT round_no, status FROM giseong_rounds WHERE project_id = ? ORDER BY round_no'
+    ).all(project_id) as Array<{ round_no: number; status: string }>
+
+    // 검증
+    const validation = validateGiseongRound({
+      project_id,
+      designItemCount: designItems.length,
+      existingRounds,
+    })
+
+    if (!validation.valid) {
+      throw new Error(validation.errors.join('\n'))
     }
 
+    // 경고가 있고 확인 안 된 경우 경고 반환 (프론트에서 확인 후 재요청)
+    if (validation.warnings.length > 0 && !data.confirmed) {
+      return { needsConfirmation: true, warnings: validation.warnings }
+    }
+
+    const nextRound = existingRounds.length > 0
+      ? existingRounds[existingRounds.length - 1].round_no + 1
+      : 1
+
     const createRound = db.transaction(() => {
-      // 회차 생성
       const result = db.prepare(`
         INSERT INTO giseong_rounds (project_id, round_no) VALUES (?, ?)
       `).run(project_id, nextRound)
       const roundId = result.lastInsertRowid as number
 
-      // 이전 회차의 누계 가져오기
+      // 이전 회차 누계 가져오기
       let prevRound: { id: number } | undefined
       if (nextRound > 1) {
         prevRound = db.prepare(
@@ -51,7 +67,6 @@ export function registerGiseongHandlers(db: Database.Database): void {
         ).get(project_id, nextRound - 1) as { id: number } | undefined
       }
 
-      // 각 설계내역별 기성 상세 생성
       const insertDetail = db.prepare(`
         INSERT INTO giseong_details (round_id, item_id, prev_rate, prev_amount, curr_rate, curr_amount, cumul_rate, cumul_amount)
         VALUES (?, ?, ?, ?, 0, 0, ?, ?)
@@ -65,14 +80,12 @@ export function registerGiseongHandlers(db: Database.Database): void {
           const prevDetail = db.prepare(
             'SELECT cumul_rate, cumul_amount FROM giseong_details WHERE round_id = ? AND item_id = ?'
           ).get(prevRound.id, item.id) as { cumul_rate: number; cumul_amount: number } | undefined
-
           if (prevDetail) {
             prevRate = prevDetail.cumul_rate
             prevAmount = prevDetail.cumul_amount
           }
         }
 
-        // 금회 = 0, 누계 = 전회
         insertDetail.run(roundId, item.id, prevRate, prevAmount, prevRate, prevAmount)
       }
 
@@ -80,25 +93,64 @@ export function registerGiseongHandlers(db: Database.Database): void {
     })
 
     const roundId = createRound()
+
+    logAudit(db, '기성회차', roundId, '생성',
+      `제${nextRound}회 기성 회차 생성 (설계내역 ${designItems.length}건)`)
+
     return db.prepare('SELECT * FROM giseong_rounds WHERE id = ?').get(roundId)
   })
 
-  // 기성 회차 수정 (상태, 메모 등)
+  // 기성 회차 수정 (상태 변경시 검증 + 감사)
   ipcMain.handle(IPC_CHANNELS.GISEONG_ROUND_UPDATE, (_event, roundId: number, data) => {
+    const existing = db.prepare('SELECT * FROM giseong_rounds WHERE id = ?').get(roundId) as Record<string, unknown>
+    if (!existing) throw new Error('기성 회차를 찾을 수 없습니다.')
+
+    // 상태 변경 검증
+    if (data.status && data.status !== existing.status) {
+      const validTransitions: Record<string, string[]> = {
+        '작성중': ['청구완료'],
+        '청구완료': ['승인완료', '보완요청'],
+        '보완요청': ['작성중', '청구완료'],
+        '승인완료': [],
+      }
+      const allowed = validTransitions[existing.status as string] || []
+      if (!allowed.includes(data.status)) {
+        throw new Error(
+          `'${existing.status}'에서 '${data.status}'로 변경할 수 없습니다. 가능: ${allowed.join(', ') || '없음'}`
+        )
+      }
+
+      // 청구완료 시 기성금액 0 체크
+      if (data.status === '청구완료') {
+        const total = db.prepare(
+          'SELECT COALESCE(SUM(curr_amount), 0) as total FROM giseong_details WHERE round_id = ?'
+        ).get(roundId) as { total: number }
+        if (total.total === 0) {
+          throw new Error('금회 기성금액이 0원입니다. 진도율을 입력한 후 청구해주세요.')
+        }
+      }
+    }
+
     const fields: string[] = []
     const params: Record<string, unknown> = { id: roundId }
+    const changeDesc: string[] = []
 
     if (data.claim_date !== undefined) {
       fields.push('claim_date = @claim_date')
       params.claim_date = data.claim_date
+      if (data.claim_date !== existing.claim_date) changeDesc.push(`기성일자: ${data.claim_date}`)
     }
     if (data.status !== undefined) {
       fields.push('status = @status')
       params.status = data.status
+      if (data.status !== existing.status) changeDesc.push(`상태: ${existing.status} → ${data.status}`)
     }
     if (data.approved_amount !== undefined) {
       fields.push('approved_amount = @approved_amount')
       params.approved_amount = data.approved_amount
+      if (data.approved_amount !== existing.approved_amount) {
+        changeDesc.push(`승인금액: ${Number(data.approved_amount).toLocaleString()}원`)
+      }
     }
     if (data.notes !== undefined) {
       fields.push('notes = @notes')
@@ -115,10 +167,16 @@ export function registerGiseongHandlers(db: Database.Database): void {
     ).get(roundId) as { total: number }
     db.prepare('UPDATE giseong_rounds SET claim_amount = ? WHERE id = ?').run(total.total, roundId)
 
+    if (changeDesc.length > 0) {
+      logAudit(db, '기성회차', roundId,
+        data.status !== existing.status ? '상태변경' : '수정',
+        `제${existing.round_no}회: ${changeDesc.join(', ')}`)
+    }
+
     return db.prepare('SELECT * FROM giseong_rounds WHERE id = ?').get(roundId)
   })
 
-  // 기성 상세 목록 (내역별 진도율)
+  // 기성 상세 목록
   ipcMain.handle(IPC_CHANNELS.GISEONG_DETAILS, (_event, roundId: number) => {
     return db.prepare(`
       SELECT gd.*, di.category, di.subcategory, di.item_name, di.unit, di.quantity,
@@ -130,55 +188,81 @@ export function registerGiseongHandlers(db: Database.Database): void {
     `).all(roundId)
   })
 
-  // 기성 상세 수정 (진도율 입력)
+  // 기성 상세 수정 (진도율 입력 - 검증 + 감사)
   ipcMain.handle(IPC_CHANNELS.GISEONG_DETAIL_UPDATE, (_event, detailId: number, data: { curr_rate: number }) => {
-    // 현재 상세 정보 가져오기
     const detail = db.prepare(`
-      SELECT gd.*, di.total_price
+      SELECT gd.*, di.total_price, di.item_name
       FROM giseong_details gd
       JOIN design_items di ON gd.item_id = di.id
       WHERE gd.id = ?
-    `).get(detailId) as { prev_rate: number; prev_amount: number; total_price: number; round_id: number } | undefined
+    `).get(detailId) as {
+      prev_rate: number; prev_amount: number; curr_rate: number;
+      total_price: number; round_id: number; item_name: string
+    } | undefined
 
     if (!detail) throw new Error('기성 상세 정보를 찾을 수 없습니다.')
 
-    const currRate = Math.max(0, Math.min(100, data.curr_rate))
-    const cumulRate = detail.prev_rate + currRate
-    if (cumulRate > 100) {
-      throw new Error(`누계 진도율이 100%를 초과합니다. (전회: ${detail.prev_rate}% + 금회: ${currRate}% = ${cumulRate}%)`)
+    // 회차가 작성중인지 확인
+    const round = db.prepare('SELECT status, round_no FROM giseong_rounds WHERE id = ?').get(detail.round_id) as { status: string; round_no: number }
+    if (round.status !== '작성중') {
+      throw new Error(`제${round.round_no}회는 '${round.status}' 상태이므로 수정할 수 없습니다.`)
     }
 
+    // 검증
+    const validation = validateGiseongRate({
+      prevRate: detail.prev_rate,
+      currRate: data.curr_rate,
+      itemName: detail.item_name,
+      totalPrice: detail.total_price,
+    })
+    if (!validation.valid) {
+      throw new Error(validation.errors.join('\n'))
+    }
+
+    const currRate = data.curr_rate
+    const cumulRate = detail.prev_rate + currRate
     const currAmount = Math.round(detail.total_price * currRate / 100)
     const cumulAmount = detail.prev_amount + currAmount
 
+    const oldRate = detail.curr_rate
+
     db.prepare(`
-      UPDATE giseong_details SET
-        curr_rate = ?,
-        cumul_rate = ?,
-        curr_amount = ?,
-        cumul_amount = ?
+      UPDATE giseong_details SET curr_rate = ?, cumul_rate = ?, curr_amount = ?, cumul_amount = ?
       WHERE id = ?
     `).run(currRate, cumulRate, currAmount, cumulAmount, detailId)
 
-    // 회차 총 기성금액 재계산
+    // 회차 총액 재계산
     const total = db.prepare(
       'SELECT COALESCE(SUM(curr_amount), 0) as total FROM giseong_details WHERE round_id = ?'
     ).get(detail.round_id) as { total: number }
     db.prepare('UPDATE giseong_rounds SET claim_amount = ? WHERE id = ?').run(total.total, detail.round_id)
 
-    // 업데이트된 상세 반환
-    return db.prepare(`
-      SELECT gd.*, di.category, di.subcategory, di.item_name, di.unit, di.quantity,
-             di.unit_price, di.total_price, di.cost_type
-      FROM giseong_details gd
-      JOIN design_items di ON gd.item_id = di.id
-      WHERE gd.id = ?
-    `).get(detailId)
+    // 감사 로그 (값이 실제로 변경된 경우만)
+    if (oldRate !== currRate) {
+      logAudit(db, '기성상세', detailId, '수정',
+        `"${detail.item_name}" 진도율: ${oldRate}% → ${currRate}% (금액: ${currAmount.toLocaleString()}원)`,
+        [{ field: 'curr_rate', old: oldRate, new: currRate }])
+    }
+
+    const updatedDetail = db.prepare(`
+        SELECT gd.*, di.category, di.subcategory, di.item_name, di.unit, di.quantity,
+               di.unit_price, di.total_price, di.cost_type
+        FROM giseong_details gd
+        JOIN design_items di ON gd.item_id = di.id
+        WHERE gd.id = ?
+      `).get(detailId) as Record<string, unknown>
+    return { ...updatedDetail, warnings: validation.warnings }
   })
 
-  // 기성내역서 엑셀 내보내기
+  // 기성내역서 엑셀 내보내기 (감사 로그)
   ipcMain.handle(IPC_CHANNELS.GISEONG_EXPORT_EXCEL, async (_event, roundId: number, savePath: string) => {
     const { exportGiseongExcel } = await import('../excel/writer')
-    return exportGiseongExcel(db, roundId, savePath)
+    const result = await exportGiseongExcel(db, roundId, savePath)
+
+    const round = db.prepare('SELECT round_no, claim_amount FROM giseong_rounds WHERE id = ?').get(roundId) as { round_no: number; claim_amount: number }
+    logAudit(db, '기성회차', roundId, '내보내기',
+      `제${round.round_no}회 기성내역서 엑셀 내보내기 (${round.claim_amount.toLocaleString()}원) → ${savePath}`)
+
+    return result
   })
 }

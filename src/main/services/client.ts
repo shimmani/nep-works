@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import Database from 'better-sqlite3'
 import { IPC_CHANNELS } from '../../shared/types'
+import { logAudit, detectChanges } from './audit'
 
 export function registerClientHandlers(db: Database.Database): void {
   ipcMain.handle(IPC_CHANNELS.CLIENT_LIST, () => {
@@ -17,10 +18,16 @@ export function registerClientHandlers(db: Database.Database): void {
       VALUES (@name, @region, @contact_person, @contact_phone, @address, @template_set, @notes)
     `)
     const result = stmt.run(data)
-    return { id: result.lastInsertRowid, ...data }
+    const id = result.lastInsertRowid as number
+
+    logAudit(db, '발주처', id, '생성', `발주처 "${data.name}" 생성`)
+
+    return { id, ...data }
   })
 
   ipcMain.handle(IPC_CHANNELS.CLIENT_UPDATE, (_event, id: number, data) => {
+    const old = db.prepare('SELECT * FROM clients WHERE id = ?').get(id) as Record<string, unknown>
+
     const stmt = db.prepare(`
       UPDATE clients SET
         name = @name,
@@ -34,16 +41,25 @@ export function registerClientHandlers(db: Database.Database): void {
       WHERE id = @id
     `)
     stmt.run({ ...data, id })
+
+    const changes = detectChanges(old, data, ['name', 'region', 'contact_person', 'contact_phone', 'address', 'template_set'])
+    if (changes.length > 0) {
+      logAudit(db, '발주처', id, '수정', `발주처 "${data.name}" 수정`, changes)
+    }
+
     return db.prepare('SELECT * FROM clients WHERE id = ?').get(id)
   })
 
   ipcMain.handle(IPC_CHANNELS.CLIENT_DELETE, (_event, id: number) => {
-    // 프로젝트가 있으면 삭제 불가
+    const client = db.prepare('SELECT name FROM clients WHERE id = ?').get(id) as { name: string } | undefined
     const projects = db.prepare('SELECT COUNT(*) as cnt FROM projects WHERE client_id = ?').get(id) as { cnt: number }
     if (projects.cnt > 0) {
       throw new Error(`이 발주처에 ${projects.cnt}건의 프로젝트가 등록되어 있어 삭제할 수 없습니다.`)
     }
     db.prepare('DELETE FROM clients WHERE id = ?').run(id)
+
+    logAudit(db, '발주처', id, '삭제', `발주처 "${client?.name}" 삭제`)
+
     return { success: true }
   })
 }

@@ -104,9 +104,98 @@ TypeScript 타입 체크 + electron-vite 빌드 모두 성공.
 
 ---
 
+## 세션 2: 슈퍼 개인화 + 휴먼 체크포인트 + 테스트 (2026-03-17)
+
+### 목표
+
+기존 Phase 1 구현에 "슈퍼 개인화" 레이어 추가: 100% 자동화가 아니더라도 시간을 1/10로 단축하면서, 휴먼이 모든 중요 단계에서 확인·검증할 수 있도록.
+
+### 1단계: Backend 서비스 신규 구현
+
+**감사 로그 (audit.ts):**
+- `logAudit()` — 모든 엔티티(프로젝트, 발주처, 기성, 설계내역)의 변경이력 자동 기록
+- `detectChanges()` — 이전/새 객체 비교하여 필드별 변경사항 감지
+- `audit:list`, `audit:project-all` IPC 핸들러
+
+**비즈니스 검증 (validation.ts):**
+- `validateProject()` — 필수값, 수의계약 한도(2026년: 종합 4억/전문 2억/일반 1.6억/용역 1억), 날짜 논리
+- `validateStatusTransition()` — 유효 상태전이 검증 (상태 머신)
+- `validateGiseongRound()` — 설계내역 존재 확인, 이전 회차 미완료 경고
+- `validateGiseongRate()` — 진도율 범위, 누계 100% 초과 방지, 고액 경고
+- `validateDesignImport()` — 계약금액 대비 설계금액 비율, 0원/음수 항목 경고
+- `validateGiseongExport()` — 내보내기 전 검증 (전체 0%, 0원 기성 등)
+- 모든 검증: errors(차단) + warnings(경고, 사용자 확인 후 진행 가능) 분리
+
+**워크플로우 자동화 (workflow.ts):**
+- 프로젝트 상태 변경시 자동 할일 생성 (계약체결 3건, 시공중 3건, 준공서류작성 6건, 준공완료 2건)
+- 중복 방지, 완료/건너뛰기 처리
+- 다음 단계 추천 (workflow:next-steps)
+
+**추천 엔진 (recommend.ts):**
+- `recommend:project-defaults` — 발주처별 과거 프로젝트 기반 기본값 추천 (계약유형, 방식, 평균 금액)
+- `recommend:giseong-rates` — 같은 발주처의 과거 프로젝트에서 동일 회차 평균 진도율 추천
+- `recommend:giseong-preview` — 기성 회차 생성 전 미리보기 (잔여금액, 진행률, 기존 회차)
+- `recommend:design-preview` — 설계내역 임포트 전 파싱 결과 미리보기 + 검증
+- `recommend:export-preview` — 엑셀 내보내기 전 검증 프리뷰
+- `recommend:save-client-default` — 발주처별 커스텀 기본값 저장
+
+### 2단계: DB 스키마 확장
+
+3개 신규 테이블:
+- `audit_log` — 변경이력 (entity_type, entity_id, action, field_name, old_value, new_value, description)
+- `client_defaults` — 발주처별 커스텀 기본값 (setting_key/value, UNIQUE 제약)
+- `workflow_tasks` — 할일 (project_id, task_type, title, due_date, status, auto_generated)
+
+### 3단계: 기존 서비스 강화
+
+- **project.ts** — 생성/수정시 검증(validateProject) + 상태전이 검증 + 감사 로그 + 경고 반환
+- **giseong.ts** — 회차 생성시 검증 + confirmed 패턴, 진도율 수정시 검증, 상태전이 강화, 감사 로그
+- **design.ts** — 임포트시 감사 로그 (파일명, 건수, 합계)
+- **client.ts** — CRUD 감사 로그 + 필드별 변경 추적
+
+### 4단계: Frontend 전면 업데이트
+
+- **Dashboard** — 할일 목록(workflowPendingAll) 표시 + 완료 처리 버튼
+- **Projects** — 발주처 선택시 과거 데이터 기반 추천 표시(Alert) + 적용 버튼, 저장시 검증 경고 Modal.confirm
+- **ProjectDetail** — 설계내역 임포트 프리뷰 모달, 기성 회차 생성 프리뷰 모달, 할일 탭, 변경이력 탭
+- **Giseong** — 엑셀 내보내기 프리뷰 모달 (6개 통계 카드 + 검증 경고)
+
+### 5단계: IPC 채널 정리
+
+- `src/shared/types.ts`에 16개 신규 IPC 채널 상수 추가
+- `src/preload/index.ts`에 16개 신규 API 메서드 추가
+- `src/main/index.ts`에 3개 신규 핸들러 등록 (audit, workflow, recommend)
+
+### 6단계: 테스트
+
+- **vitest** 도입 (devDependency)
+- 300개 테스트 케이스 작성 및 전체 통과:
+  - `tests/validation.test.ts` (100건) — 6개 검증 함수 전체 분기 커버
+  - `tests/audit-workflow.test.ts` (100건) — 감사 로그, 변경 감지, 워크플로우 자동생성/관리/다음단계
+  - `tests/recommend-integration.test.ts` (100건) — 추천 엔진 + 기성 통합 워크플로우
+
+### 이슈 및 해결
+
+1. **Divider orientation 타입 오류**: antd Divider의 `orientation="left"` 속성이 타입 에러 → `plain`만 사용으로 해결
+2. **Spread types 타입 오류**: `...db.prepare().get()` 결과가 undefined 가능성 → `as Record<string, unknown>` 캐스팅
+3. **better-sqlite3 NODE_MODULE_VERSION 불일치**: Electron용으로 빌드된 네이티브 모듈 → `npm rebuild` 실행
+
+### 빌드 결과
+
+```
+✓ main: 13 modules, 152ms
+✓ preload: 2 modules, 15ms
+✓ renderer: 3,062 modules, 2.84s
+✓ TypeScript 타입 체크 통과
+✓ 테스트 300/300 통과 (258ms)
+```
+
+---
+
 ## 다음 세션 예정 작업
 
-- [ ] `npm run dev`로 실행 테스트
-- [ ] 실제 설계내역서 엑셀로 임포트 테스트
-- [ ] 기성내역서 엑셀 출력물 검증
+- [ ] `npm run dev`로 실행 테스트 (실제 UI 동작 확인)
+- [ ] 실제 설계내역서 엑셀로 임포트 + 프리뷰 기능 검증
+- [ ] 기성내역서 엑셀 출력물 검증 + 내보내기 프리뷰 검증
+- [ ] 워크플로우 할일 자동생성 실제 동작 확인
 - [ ] Phase 2 준공서류/노무비 구현 시작

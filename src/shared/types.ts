@@ -240,6 +240,26 @@ export const IPC_CHANNELS = {
   // 설계내역
   DESIGN_ITEMS: 'design:items',
   DESIGN_IMPORT_EXCEL: 'design:import:excel',
+  // 프로젝트 검증
+  PROJECT_VALIDATE: 'project:validate',
+  // 감사 로그
+  AUDIT_LIST: 'audit:list',
+  AUDIT_PROJECT_ALL: 'audit:project-all',
+  // 워크플로우
+  WORKFLOW_TASKS: 'workflow:tasks',
+  WORKFLOW_COMPLETE: 'workflow:complete',
+  WORKFLOW_SKIP: 'workflow:skip',
+  WORKFLOW_CREATE: 'workflow:create',
+  WORKFLOW_PENDING_ALL: 'workflow:pending-all',
+  WORKFLOW_ON_STATUS_CHANGE: 'workflow:on-status-change',
+  WORKFLOW_NEXT_STEPS: 'workflow:next-steps',
+  // 추천/프리뷰
+  RECOMMEND_PROJECT_DEFAULTS: 'recommend:project-defaults',
+  RECOMMEND_GISEONG_RATES: 'recommend:giseong-rates',
+  RECOMMEND_GISEONG_PREVIEW: 'recommend:giseong-preview',
+  RECOMMEND_SAVE_CLIENT_DEFAULT: 'recommend:save-client-default',
+  RECOMMEND_DESIGN_PREVIEW: 'recommend:design-preview',
+  RECOMMEND_EXPORT_PREVIEW: 'recommend:export-preview',
   // 다이얼로그
   DIALOG_OPEN_FILE: 'dialog:openFile',
   DIALOG_SAVE_FILE: 'dialog:saveFile',

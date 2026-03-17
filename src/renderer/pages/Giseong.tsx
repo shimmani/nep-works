@@ -1,11 +1,35 @@
 import React, { useEffect, useState } from 'react'
 import {
-  Card, Table, Select, InputNumber, Button, Tag, Typography, Space, message, Empty
+  Card, Table, Select, InputNumber, Button, Tag, Typography, Space, message, Empty,
+  Modal, Alert, Descriptions, Statistic
 } from 'antd'
 import { ExportOutlined, SaveOutlined } from '@ant-design/icons'
 import type { Project, GiseongRound, GiseongDetail } from '../../shared/types'
 
 const { Title } = Typography
+
+interface ExportPreviewData {
+  round: {
+    project_name: string
+    client_name: string
+    round_no: number
+    status: string
+    claim_amount: number
+  }
+  summary: {
+    totalDesign: number
+    totalCurr: number
+    totalCumul: number
+    progressPercent: number
+    itemCount: number
+    changedItems: number
+  }
+  validation: {
+    valid: boolean
+    errors: string[]
+    warnings: string[]
+  }
+}
 
 export default function Giseong(): React.ReactElement {
   const [projects, setProjects] = useState<Project[]>([])
@@ -15,6 +39,8 @@ export default function Giseong(): React.ReactElement {
   const [details, setDetails] = useState<GiseongDetail[]>([])
   const [loading, setLoading] = useState(false)
   const [roundInfo, setRoundInfo] = useState<GiseongRound | null>(null)
+  const [exportPreview, setExportPreview] = useState<ExportPreviewData | null>(null)
+  const [exportPreviewVisible, setExportPreviewVisible] = useState(false)
 
   useEffect(() => {
     loadProjects()
@@ -65,6 +91,19 @@ export default function Giseong(): React.ReactElement {
 
   async function handleExportExcel() {
     if (!selectedRound) return
+
+    try {
+      const preview: ExportPreviewData = await window.api.recommendExportPreview(selectedRound)
+      setExportPreview(preview)
+      setExportPreviewVisible(true)
+    } catch (err) {
+      if (err instanceof Error) message.error(err.message)
+    }
+  }
+
+  async function handleExportConfirm() {
+    if (!selectedRound || !exportPreview) return
+
     const savePath = await window.api.saveFileDialog({
       defaultPath: `기성내역서_제${roundInfo?.round_no}회.xlsx`,
       filters: [{ name: 'Excel', extensions: ['xlsx'] }]
@@ -74,6 +113,8 @@ export default function Giseong(): React.ReactElement {
     try {
       await window.api.giseongExportExcel(selectedRound, savePath)
       message.success('기성내역서가 저장되었습니다.')
+      setExportPreviewVisible(false)
+      setExportPreview(null)
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
     }
@@ -248,6 +289,139 @@ export default function Giseong(): React.ReactElement {
       ) : (
         <Card><Empty description="프로젝트와 기성 회차를 선택해주세요." /></Card>
       )}
+
+      <Modal
+        title="엑셀 내보내기 미리보기"
+        open={exportPreviewVisible}
+        onOk={handleExportConfirm}
+        onCancel={() => {
+          setExportPreviewVisible(false)
+          setExportPreview(null)
+        }}
+        okText="내보내기"
+        cancelText="취소"
+        okButtonProps={{
+          disabled: exportPreview?.validation.valid === false
+        }}
+        width={640}
+      >
+        {exportPreview && (
+          <div>
+            <Descriptions
+              bordered
+              size="small"
+              column={2}
+              style={{ marginBottom: 16 }}
+            >
+              <Descriptions.Item label="프로젝트명">
+                {exportPreview.round.project_name}
+              </Descriptions.Item>
+              <Descriptions.Item label="발주처">
+                {exportPreview.round.client_name}
+              </Descriptions.Item>
+              <Descriptions.Item label="회차">
+                제{exportPreview.round.round_no}회
+              </Descriptions.Item>
+              <Descriptions.Item label="상태">
+                <Tag color={
+                  exportPreview.round.status === '작성중' ? 'blue'
+                    : exportPreview.round.status === '승인완료' ? 'green'
+                    : 'orange'
+                }>
+                  {exportPreview.round.status}
+                </Tag>
+              </Descriptions.Item>
+            </Descriptions>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 16,
+              marginBottom: 16
+            }}>
+              <Card size="small">
+                <Statistic
+                  title="설계금액"
+                  value={exportPreview.summary.totalDesign}
+                  suffix="원"
+                  groupSeparator=","
+                />
+              </Card>
+              <Card size="small">
+                <Statistic
+                  title="금회 금액"
+                  value={exportPreview.summary.totalCurr}
+                  suffix="원"
+                  groupSeparator=","
+                  valueStyle={{ color: '#1677ff' }}
+                />
+              </Card>
+              <Card size="small">
+                <Statistic
+                  title="누계 금액"
+                  value={exportPreview.summary.totalCumul}
+                  suffix="원"
+                  groupSeparator=","
+                />
+              </Card>
+              <Card size="small">
+                <Statistic
+                  title="진행률"
+                  value={exportPreview.summary.progressPercent}
+                  suffix="%"
+                  precision={1}
+                />
+              </Card>
+              <Card size="small">
+                <Statistic
+                  title="항목 수"
+                  value={exportPreview.summary.itemCount}
+                  suffix="건"
+                />
+              </Card>
+              <Card size="small">
+                <Statistic
+                  title="변경 항목"
+                  value={exportPreview.summary.changedItems}
+                  suffix="건"
+                  valueStyle={exportPreview.summary.changedItems > 0 ? { color: '#fa8c16' } : undefined}
+                />
+              </Card>
+            </div>
+
+            {exportPreview.validation.errors.length > 0 && (
+              <Alert
+                type="error"
+                message="검증 오류"
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 20 }}>
+                    {exportPreview.validation.errors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                }
+                style={{ marginBottom: 12 }}
+                showIcon
+              />
+            )}
+
+            {exportPreview.validation.warnings.length > 0 && (
+              <Alert
+                type="warning"
+                message="검증 경고"
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 20 }}>
+                    {exportPreview.validation.warnings.map((warn, i) => (
+                      <li key={i}>{warn}</li>
+                    ))}
+                  </ul>
+                }
+                showIcon
+              />
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

@@ -7,6 +7,9 @@ import { registerProjectHandlers } from './services/project'
 import { registerClientHandlers } from './services/client'
 import { registerGiseongHandlers } from './services/giseong'
 import { registerDesignHandlers } from './services/design'
+import { registerAuditHandlers } from './services/audit'
+import { registerWorkflowHandlers } from './services/workflow'
+import { registerRecommendHandlers } from './services/recommend'
 import { IPC_CHANNELS } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
@@ -79,6 +82,9 @@ app.whenReady().then(() => {
   registerClientHandlers(db)
   registerGiseongHandlers(db)
   registerDesignHandlers(db)
+  registerAuditHandlers(db)
+  registerWorkflowHandlers(db)
+  registerRecommendHandlers(db)
 
   createWindow()
 

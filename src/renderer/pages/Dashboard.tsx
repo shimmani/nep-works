@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Statistic, Row, Col, Table, Tag, Typography } from 'antd'
+import { Card, Statistic, Row, Col, Table, Tag, Typography, List, Button } from 'antd'
 import {
   ProjectOutlined,
   CalculatorOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  CheckOutlined,
+  ForwardOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { Project } from '../../shared/types'
@@ -25,6 +27,9 @@ const statusColors: Record<string, string> = {
 
 export default function Dashboard(): React.ReactElement {
   const [projects, setProjects] = useState<Project[]>([])
+  const [pendingTasks, setPendingTasks] = useState<
+    { id: number; title: string; project_name: string; task_type: string; due_date?: string }[]
+  >([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -34,8 +39,12 @@ export default function Dashboard(): React.ReactElement {
 
   async function loadData() {
     try {
-      const data = await window.api.projectList()
+      const [data, tasks] = await Promise.all([
+        window.api.projectList(),
+        window.api.workflowPendingAll(),
+      ])
       setProjects(data)
+      setPendingTasks(tasks)
     } catch {
       // 초기 데이터 없음
     } finally {
@@ -48,6 +57,15 @@ export default function Dashboard(): React.ReactElement {
   )
 
   const totalContractAmount = activeProjects.reduce((sum, p) => sum + p.contract_amount, 0)
+
+  async function handleCompleteTask(taskId: number) {
+    try {
+      await window.api.workflowComplete(taskId)
+      await loadData()
+    } catch {
+      // 완료 처리 실패
+    }
+  }
 
   const columns = [
     {
@@ -148,6 +166,40 @@ export default function Dashboard(): React.ReactElement {
           loading={loading}
           size="small"
           pagination={false}
+        />
+      </Card>
+
+      <Card title="할일 목록" style={{ marginBottom: 20 }}>
+        <List
+          dataSource={pendingTasks}
+          loading={loading}
+          locale={{ emptyText: '대기중인 할일이 없습니다' }}
+          renderItem={(task) => (
+            <List.Item
+              actions={[
+                <Button
+                  key="complete"
+                  type="primary"
+                  size="small"
+                  icon={<CheckOutlined />}
+                  onClick={() => handleCompleteTask(task.id)}
+                >
+                  완료
+                </Button>,
+              ]}
+            >
+              <List.Item.Meta
+                avatar={<ForwardOutlined style={{ fontSize: 18, color: '#1677ff' }} />}
+                title={
+                  <span>
+                    <Tag color="blue">{task.project_name}</Tag>
+                    {task.title}
+                  </span>
+                }
+                description={task.due_date ? `기한: ${task.due_date}` : undefined}
+              />
+            </List.Item>
+          )}
         />
       </Card>
     </div>

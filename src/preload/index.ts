@@ -14,6 +14,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_UPDATE, id, data),
   projectDelete: (id: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DELETE, id),
+  projectValidate: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_VALIDATE, data),
 
   // 발주처
   clientList: () => ipcRenderer.invoke(IPC_CHANNELS.CLIENT_LIST),
@@ -46,6 +48,42 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.DESIGN_ITEMS, projectId),
   designImportExcel: (projectId: number, filePath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.DESIGN_IMPORT_EXCEL, projectId, filePath),
+
+  // 감사 로그
+  auditList: (entityType: string, entityId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AUDIT_LIST, entityType, entityId),
+  auditProjectAll: (projectId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AUDIT_PROJECT_ALL, projectId),
+
+  // 워크플로우
+  workflowTasks: (projectId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_TASKS, projectId),
+  workflowComplete: (taskId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_COMPLETE, taskId),
+  workflowSkip: (taskId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_SKIP, taskId),
+  workflowCreate: (data: { project_id: number; title: string; description?: string; due_date?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_CREATE, data),
+  workflowPendingAll: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_PENDING_ALL),
+  workflowOnStatusChange: (projectId: number, newStatus: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_ON_STATUS_CHANGE, projectId, newStatus),
+  workflowNextSteps: (projectId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_NEXT_STEPS, projectId),
+
+  // 추천/프리뷰
+  recommendProjectDefaults: (clientId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RECOMMEND_PROJECT_DEFAULTS, clientId),
+  recommendGiseongRates: (projectId: number, roundNo: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RECOMMEND_GISEONG_RATES, projectId, roundNo),
+  recommendGiseongPreview: (projectId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RECOMMEND_GISEONG_PREVIEW, projectId),
+  recommendSaveClientDefault: (clientId: number, key: string, value: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RECOMMEND_SAVE_CLIENT_DEFAULT, clientId, key, value),
+  recommendDesignPreview: (filePath: string, contractAmount: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RECOMMEND_DESIGN_PREVIEW, filePath, contractAmount),
+  recommendExportPreview: (roundId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RECOMMEND_EXPORT_PREVIEW, roundId),
 
   // 다이얼로그
   openFileDialog: (options?: Record<string, unknown>) =>

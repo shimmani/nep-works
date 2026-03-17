@@ -214,7 +214,47 @@ function createTables(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
+    -- 감사 로그 (모든 중요 변경 이력)
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL,
+      entity_id INTEGER NOT NULL,
+      action TEXT NOT NULL CHECK(action IN ('생성','수정','삭제','상태변경','임포트','내보내기')),
+      field_name TEXT,
+      old_value TEXT,
+      new_value TEXT,
+      description TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    -- 발주처별 기본 설정 (개인화)
+    CREATE TABLE IF NOT EXISTS client_defaults (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      setting_key TEXT NOT NULL,
+      setting_value TEXT NOT NULL,
+      UNIQUE(client_id, setting_key)
+    );
+
+    -- 워크플로우 알림/할일
+    CREATE TABLE IF NOT EXISTS workflow_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      task_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      due_date TEXT,
+      status TEXT NOT NULL CHECK(status IN ('대기','완료','건너뜀')) DEFAULT '대기',
+      auto_generated INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      completed_at TEXT
+    );
+
     -- 인덱스
+    CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_workflow_project ON workflow_tasks(project_id);
+    CREATE INDEX IF NOT EXISTS idx_workflow_status ON workflow_tasks(status);
     CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id);
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
     CREATE INDEX IF NOT EXISTS idx_design_items_project ON design_items(project_id);

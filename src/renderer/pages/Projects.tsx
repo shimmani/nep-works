@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   Table, Button, Tag, Space, Typography, Modal, Form, Input, Select,
-  InputNumber, DatePicker, message, Popconfirm
+  InputNumber, DatePicker, message, Popconfirm, Alert
 } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -24,12 +24,25 @@ const projectStatuses: ProjectStatus[] = [
   '준공검사', '준공완료', '하자보증중', '완료'
 ]
 
+interface Recommendation {
+  hasHistory: boolean
+  projectCount: number
+  recommended: {
+    contract_type: ContractType
+    contract_method: ContractMethod
+    avg_amount: number
+    avg_duration_days: number
+  }
+  customDefaults: Record<string, unknown> | null
+}
+
 export default function Projects(): React.ReactElement {
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [recommendation, setRecommendation] = useState<Recommendation | null>(null)
   const [form] = Form.useForm()
   const navigate = useNavigate()
 
@@ -60,6 +73,7 @@ export default function Projects(): React.ReactElement {
       vat_included: 1,
     })
     setEditingId(null)
+    setRecommendation(null)
     setModalOpen(true)
   }
 
@@ -71,7 +85,33 @@ export default function Projects(): React.ReactElement {
         : undefined,
     })
     setEditingId(record.id)
+    setRecommendation(null)
     setModalOpen(true)
+  }
+
+  async function handleClientChange(clientId: number) {
+    try {
+      const result = await window.api.recommendProjectDefaults(clientId)
+      if (result.hasHistory) {
+        setRecommendation(result)
+      } else {
+        setRecommendation(null)
+      }
+    } catch {
+      setRecommendation(null)
+    }
+  }
+
+  function applyRecommendation() {
+    if (!recommendation) return
+    const { recommended } = recommendation
+    form.setFieldsValue({
+      contract_type: recommended.contract_type,
+      contract_method: recommended.contract_method,
+      contract_amount: Math.round(recommended.avg_amount),
+    })
+    setRecommendation(null)
+    message.info('추천 값이 적용되었습니다.')
   }
 
   async function handleSave() {
@@ -86,6 +126,33 @@ export default function Projects(): React.ReactElement {
         notes: values.notes || null,
       }
       delete data.period
+
+      // Validation
+      const validation = await window.api.projectValidate(data)
+      if (!validation.valid && validation.errors.length > 0) {
+        validation.errors.forEach((err: string) => message.error(err))
+        return
+      }
+
+      if (validation.warnings.length > 0) {
+        const confirmed = await new Promise<boolean>((resolve) => {
+          Modal.confirm({
+            title: '확인 필요',
+            content: (
+              <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
+                {validation.warnings.map((w: string, i: number) => (
+                  <li key={i} style={{ color: '#faad14' }}>{w}</li>
+                ))}
+              </ul>
+            ),
+            okText: '계속 진행',
+            cancelText: '취소',
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          })
+        })
+        if (!confirmed) return
+      }
 
       if (editingId) {
         await window.api.projectUpdate(editingId, data)
@@ -181,7 +248,7 @@ export default function Projects(): React.ReactElement {
         title={editingId ? '프로젝트 수정' : '새 프로젝트'}
         open={modalOpen}
         onOk={handleSave}
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => { setModalOpen(false); setRecommendation(null) }}
         width={700}
         okText="저장"
         cancelText="취소"
@@ -190,8 +257,29 @@ export default function Projects(): React.ReactElement {
           <Form.Item name="client_id" label="발주처" rules={[{ required: true, message: '발주처를 선택하세요' }]}>
             <Select placeholder="발주처 선택" showSearch optionFilterProp="label"
               options={clients.map(c => ({ label: `${c.name} (${c.region})`, value: c.id }))}
+              onChange={handleClientChange}
             />
           </Form.Item>
+          {recommendation && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={`이 발주처의 이전 프로젝트 ${recommendation.projectCount}건 기준 추천`}
+              description={
+                <div>
+                  <span>계약유형: <strong>{recommendation.recommended.contract_type}</strong></span>
+                  {' / '}
+                  <span>계약방식: <strong>{recommendation.recommended.contract_method}</strong></span>
+                  {' / '}
+                  <span>평균 금액: <strong>{Math.round(recommendation.recommended.avg_amount).toLocaleString()}원</strong></span>
+                  <Button type="link" size="small" onClick={applyRecommendation} style={{ marginLeft: 8 }}>
+                    적용
+                  </Button>
+                </div>
+              }
+            />
+          )}
           <Form.Item name="name" label="공사명" rules={[{ required: true, message: '공사명을 입력하세요' }]}>
             <Input placeholder="시설물 유지보수 공사" />
           </Form.Item>

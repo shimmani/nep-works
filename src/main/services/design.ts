@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import Database from 'better-sqlite3'
 import { IPC_CHANNELS } from '../../shared/types'
+import { logAudit } from './audit'
 
 export function registerDesignHandlers(db: Database.Database): void {
   // 설계내역 목록
@@ -10,13 +11,14 @@ export function registerDesignHandlers(db: Database.Database): void {
     ).all(projectId)
   })
 
-  // 엑셀에서 설계내역 임포트
+  // 엑셀에서 설계내역 임포트 (확인된 데이터로 저장)
   ipcMain.handle(IPC_CHANNELS.DESIGN_IMPORT_EXCEL, async (_event, projectId: number, filePath: string) => {
     const { importDesignFromExcel } = await import('../excel/reader')
     const items = await importDesignFromExcel(filePath)
 
+    const project = db.prepare('SELECT name, contract_amount FROM projects WHERE id = ?').get(projectId) as { name: string; contract_amount: number }
+
     const importItems = db.transaction(() => {
-      // 기존 데이터 삭제 (기성이 진행된 경우 삭제 방지)
       const rounds = db.prepare(
         'SELECT COUNT(*) as cnt FROM giseong_rounds WHERE project_id = ?'
       ).get(projectId) as { cnt: number }
@@ -33,6 +35,7 @@ export function registerDesignHandlers(db: Database.Database): void {
       `)
 
       let sortOrder = 0
+      let totalAmount = 0
       for (const item of items) {
         insert.run(
           projectId,
@@ -46,12 +49,18 @@ export function registerDesignHandlers(db: Database.Database): void {
           item.cost_type || '재료비',
           sortOrder++
         )
+        totalAmount += item.total_price || 0
       }
 
-      return sortOrder
+      return { count: sortOrder, totalAmount }
     })
 
-    const count = importItems()
-    return { success: true, count }
+    const result = importItems()
+
+    // 감사 로그
+    logAudit(db, '설계내역', projectId, '임포트',
+      `"${project.name}" 설계내역 임포트: ${result.count}건, 합계 ${result.totalAmount.toLocaleString()}원 (파일: ${filePath.split('/').pop() || filePath.split('\\').pop()})`)
+
+    return { success: true, count: result.count, totalAmount: result.totalAmount }
   })
 }
