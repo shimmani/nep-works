@@ -265,6 +265,8 @@ function createTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_labor_assign_date ON labor_assign(work_date);
     CREATE INDEX IF NOT EXISTS idx_payroll_worker ON payroll(worker_id);
     CREATE INDEX IF NOT EXISTS idx_payroll_month ON payroll(year_month);
+    CREATE INDEX IF NOT EXISTS idx_payroll_project_month ON payroll(project_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_jungong_project ON jungong_docs(project_id);
   `)
 }
 

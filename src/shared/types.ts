@@ -145,6 +145,9 @@ export interface Payroll {
   net_pay: number // 실지급액
   status: PayrollStatus
   created_at: string
+  // join용
+  worker_name?: string
+  project_name?: string
 }
 
 // ===== 보험요율 (Insurance Rates) =====
@@ -192,15 +195,19 @@ export interface EvidenceDoc {
 }
 
 // ===== 준공서류 체크리스트 =====
+export type JungongDocStatus = '미완료' | '완료' | '해당없음'
+
 export interface JungongDoc {
   id: number
   project_id: number
   doc_type: string
   doc_name: string
-  status: '미완료' | '완료' | '해당없음'
+  status: JungongDocStatus
   file_path: string | null
   notes: string | null
   sort_order: number
+  // join용
+  project_name?: string
 }
 
 // ===== 엑셀 템플릿 =====
@@ -260,6 +267,30 @@ export const IPC_CHANNELS = {
   RECOMMEND_SAVE_CLIENT_DEFAULT: 'recommend:save-client-default',
   RECOMMEND_DESIGN_PREVIEW: 'recommend:design-preview',
   RECOMMEND_EXPORT_PREVIEW: 'recommend:export-preview',
+  // 근로자
+  WORKER_LIST: 'worker:list',
+  WORKER_CREATE: 'worker:create',
+  WORKER_UPDATE: 'worker:update',
+  WORKER_DELETE: 'worker:delete',
+  WORKER_TOGGLE_ACTIVE: 'worker:toggle-active',
+  // 출역
+  LABOR_LIST: 'labor:list',
+  LABOR_CREATE: 'labor:create',
+  LABOR_BULK_CREATE: 'labor:bulk-create',
+  LABOR_UPDATE: 'labor:update',
+  LABOR_DELETE: 'labor:delete',
+  LABOR_COPY_DAY: 'labor:copy-day',
+  // 급여
+  PAYROLL_CALCULATE: 'payroll:calculate',
+  PAYROLL_LIST: 'payroll:list',
+  PAYROLL_GET: 'payroll:get',
+  PAYROLL_EXPORT_EXCEL: 'payroll:export-excel',
+  // 준공서류
+  JUNGONG_INIT_CHECKLIST: 'jungong:init-checklist',
+  JUNGONG_LIST: 'jungong:list',
+  JUNGONG_UPDATE_ITEM: 'jungong:update-item',
+  JUNGONG_PROGRESS: 'jungong:progress',
+  JUNGONG_EXPORT_EXCEL: 'jungong:export-excel',
   // 다이얼로그
   DIALOG_OPEN_FILE: 'dialog:openFile',
   DIALOG_SAVE_FILE: 'dialog:saveFile',

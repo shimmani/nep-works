@@ -16,6 +16,8 @@ import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Clients from './pages/Clients'
 import Giseong from './pages/Giseong'
+import Labor from './pages/Labor'
+import Jungong from './pages/Jungong'
 import Settings from './pages/Settings'
 
 const { Sider, Content } = Layout
@@ -59,8 +61,8 @@ function AppLayout(): React.ReactElement {
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/giseong" element={<Giseong />} />
-          <Route path="/jungong" element={<div><h2>준공서류 (Phase 2)</h2></div>} />
-          <Route path="/labor" element={<div><h2>일용직 노무비 (Phase 2)</h2></div>} />
+          <Route path="/jungong" element={<Jungong />} />
+          <Route path="/labor" element={<Labor />} />
           <Route path="/bidding" element={<div><h2>입찰/계약 (Phase 3)</h2></div>} />
           <Route path="/settings" element={<Settings />} />
         </Routes>

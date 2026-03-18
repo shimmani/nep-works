@@ -257,3 +257,106 @@ export function validateClientDelete(projectCount: number): ValidationResult {
   }
   return { valid: errors.length === 0, errors, warnings: [] }
 }
+
+// ===== 근로자 검증 =====
+
+export function validateWorker(data: Record<string, unknown>): ValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  if (!data.name || String(data.name).trim().length === 0) {
+    errors.push('이름은 필수입니다.')
+  }
+  if (!data.job_type) {
+    errors.push('직종을 선택해야 합니다.')
+  }
+  if (typeof data.default_wage === 'number') {
+    if (data.default_wage <= 0) {
+      errors.push('일당은 0원보다 커야 합니다.')
+    }
+    if (data.default_wage < 50000) {
+      warnings.push(`일당이 ${data.default_wage.toLocaleString()}원으로 매우 낮습니다. 확인해주세요.`)
+    }
+    if (data.default_wage > 500000) {
+      warnings.push(`일당이 ${data.default_wage.toLocaleString()}원으로 높습니다. 확인해주세요.`)
+    }
+  } else {
+    errors.push('일당을 입력해야 합니다.')
+  }
+
+  return { valid: errors.length === 0, errors, warnings }
+}
+
+// ===== 출역 검증 =====
+
+export function validateLaborAssign(data: Record<string, unknown>): ValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  if (!data.project_id) errors.push('프로젝트를 선택해야 합니다.')
+  if (!data.worker_id) errors.push('근로자를 선택해야 합니다.')
+  if (!data.work_date) errors.push('작업일을 입력해야 합니다.')
+
+  if (typeof data.day_fraction === 'number') {
+    if (data.day_fraction < 0.5 || data.day_fraction > 2) {
+      errors.push('일수는 0.5 ~ 2.0 범위여야 합니다.')
+    }
+  }
+
+  if (typeof data.daily_wage === 'number' && data.daily_wage <= 0) {
+    errors.push('일당은 0원보다 커야 합니다.')
+  }
+
+  // 미래 날짜 경고
+  if (data.work_date) {
+    const workDate = new Date(String(data.work_date))
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (workDate > today) {
+      warnings.push('미래 날짜의 출역입니다. 확인해주세요.')
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings }
+}
+
+// ===== 급여 계산 검증 =====
+
+export function validatePayrollCalc(data: {
+  laborCount: number
+  yearMonth: string
+}): ValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  if (data.laborCount === 0) {
+    errors.push('해당 월에 출역 기록이 없습니다.')
+  }
+
+  // 년월 형식 검증
+  if (!/^\d{4}-\d{2}$/.test(data.yearMonth)) {
+    errors.push('년월 형식이 올바르지 않습니다. (YYYY-MM)')
+  }
+
+  return { valid: errors.length === 0, errors, warnings }
+}
+
+// ===== 급여 내보내기 검증 =====
+
+export function validatePayrollExport(data: {
+  records: Array<{ net_pay: number; worker_name?: string }>
+}): ValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  if (data.records.length === 0) {
+    errors.push('내보낼 급여 데이터가 없습니다.')
+  }
+
+  const zeroPayWorkers = data.records.filter(r => r.net_pay === 0)
+  if (zeroPayWorkers.length > 0) {
+    warnings.push(`실지급액이 0원인 근로자가 ${zeroPayWorkers.length}명 있습니다.`)
+  }
+
+  return { valid: errors.length === 0, errors, warnings }
+}

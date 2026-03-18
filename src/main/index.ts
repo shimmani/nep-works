@@ -10,6 +10,10 @@ import { registerDesignHandlers } from './services/design'
 import { registerAuditHandlers } from './services/audit'
 import { registerWorkflowHandlers } from './services/workflow'
 import { registerRecommendHandlers } from './services/recommend'
+import { registerWorkerHandlers } from './services/worker'
+import { registerLaborHandlers } from './services/labor'
+import { registerPayrollHandlers } from './services/payroll'
+import { registerJungongHandlers } from './services/jungong'
 import { IPC_CHANNELS } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
@@ -85,6 +89,10 @@ app.whenReady().then(() => {
   registerAuditHandlers(db)
   registerWorkflowHandlers(db)
   registerRecommendHandlers(db)
+  registerWorkerHandlers(db)
+  registerLaborHandlers(db)
+  registerPayrollHandlers(db)
+  registerJungongHandlers(db)
 
   createWindow()
 

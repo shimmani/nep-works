@@ -85,6 +85,54 @@ const api = {
   recommendExportPreview: (roundId: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.RECOMMEND_EXPORT_PREVIEW, roundId),
 
+  // 근로자
+  workerList: (filters?: { activeOnly?: boolean }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKER_LIST, filters),
+  workerCreate: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKER_CREATE, data),
+  workerUpdate: (id: number, data: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKER_UPDATE, id, data),
+  workerDelete: (id: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKER_DELETE, id),
+  workerToggleActive: (id: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKER_TOGGLE_ACTIVE, id),
+
+  // 출역
+  laborList: (projectId: number, yearMonth: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LABOR_LIST, projectId, yearMonth),
+  laborCreate: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LABOR_CREATE, data),
+  laborBulkCreate: (entries: Array<Record<string, unknown>>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LABOR_BULK_CREATE, entries),
+  laborUpdate: (id: number, data: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LABOR_UPDATE, id, data),
+  laborDelete: (id: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LABOR_DELETE, id),
+  laborCopyDay: (projectId: number, fromDate: string, toDate: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LABOR_COPY_DAY, projectId, fromDate, toDate),
+
+  // 급여
+  payrollCalculate: (projectId: number, yearMonth: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PAYROLL_CALCULATE, projectId, yearMonth),
+  payrollList: (projectId: number, yearMonth: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PAYROLL_LIST, projectId, yearMonth),
+  payrollGet: (id: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PAYROLL_GET, id),
+  payrollExportExcel: (projectId: number, yearMonth: string, savePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PAYROLL_EXPORT_EXCEL, projectId, yearMonth, savePath),
+
+  // 준공서류
+  jungongInitChecklist: (projectId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.JUNGONG_INIT_CHECKLIST, projectId),
+  jungongList: (projectId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.JUNGONG_LIST, projectId),
+  jungongUpdateItem: (id: number, data: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.JUNGONG_UPDATE_ITEM, id, data),
+  jungongProgress: (projectId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.JUNGONG_PROGRESS, projectId),
+  jungongExportExcel: (projectId: number, savePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.JUNGONG_EXPORT_EXCEL, projectId, savePath),
+
   // 다이얼로그
   openFileDialog: (options?: Record<string, unknown>) =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE, options),
