@@ -192,10 +192,80 @@ TypeScript 타입 체크 + electron-vite 빌드 모두 성공.
 
 ---
 
+## 세션 3: Phase 2 — 준공서류 + 일용직 노무비 (2026-03-19)
+
+### 목표
+
+Phase 2 핵심 기능 구현: 준공서류 체크리스트 + 일용직 노무비 관리 (급여 계산 엔진 포함). 준공사진첩은 범위에서 제외.
+
+### 1단계: Backend 서비스 구현
+
+**신규 서비스 4개:**
+- `src/main/services/worker.ts` — 근로자 CRUD + 활성/비활성 전환 + 감사 로그
+- `src/main/services/labor.ts` — 출역 단건/일괄 등록, 전일 복사, 중복 방지
+- `src/main/services/payroll.ts` — 급여 계산 엔진
+  - 4대보험: 국민연금(4.5%), 건강보험(3.545%), 장기요양(건강보험×12.95%), 고용보험(0.9%)
+  - 일용근로소득세: 일별 (일당-15만원) × 6% × 45% = 2.7%
+  - 지방소득세: 소득세 × 10%
+  - delete + insert 패턴으로 월별 재계산
+- `src/main/services/jungong.ts` — 준공서류 체크리스트 (12항목 기본 템플릿)
+
+**기존 파일 확장:**
+- `src/main/services/validation.ts` — 검증 함수 4개 추가 (validateWorker, validateLaborAssign, validatePayrollCalc, validatePayrollExport)
+- `src/main/excel/writer.ts` — 엑셀 내보내기 2개 추가 (exportPayrollLedger, exportJungongChecklist)
+
+### 2단계: IPC 연결
+
+- `src/shared/types.ts` — IPC 채널 21개 + JungongDocStatus 타입 추가
+- `src/preload/index.ts` — API 메서드 21개 추가
+- `src/main/index.ts` — 핸들러 등록 4개 추가
+- `src/main/db/schema.ts` — 인덱스 2개 추가 (payroll_project_month, jungong_project)
+
+### 3단계: Frontend
+
+**신규 페이지 2개:**
+- `src/renderer/pages/Labor.tsx` — 3개 탭:
+  1. 근로자 관리: 테이블 + 모달 CRUD + 활성/비활성 토글
+  2. 출역 관리: 프로젝트+월 선택 → 출역 테이블, 일괄 등록, 전일 복사
+  3. 급여 계산: 계산 실행 → 결과 테이블 (공제 내역) + 엑셀 내보내기
+- `src/renderer/pages/Jungong.tsx` — 프로젝트별 체크리스트, 인라인 상태 변경, 파일 첨부, Progress 바
+
+**라우팅:**
+- `src/renderer/App.tsx` — `/labor`, `/jungong` 플레이스홀더를 실제 컴포넌트로 교체
+
+### 4단계: 테스트
+
+- `tests/phase2-validation.test.ts` — 100건 (근로자/출역/급여계산/급여내보내기 검증)
+- `tests/phase2-payroll.test.ts` — 100건 (급여 계산 수식 정확성, 경계값, 현실 시나리오)
+- **전체 500/500 통과** (기존 300 + 신규 200)
+
+### 빌드 결과
+
+```
+✓ main: 17 modules, 153ms
+✓ preload: 2 modules, 8ms
+✓ renderer: 3,064 modules, 3.23s
+✓ TypeScript 타입 체크 통과
+✓ 테스트 500/500 통과 (275ms)
+```
+
+### 설계 결정
+
+1. 개인정보 암호화 건너뜀 (단일 사용자 로컬 앱)
+2. 출역 UI는 테이블 방식 (달력 위젯 대신)
+3. 급여는 프로젝트×월 단위 계산 (delete + insert 재계산)
+4. 일용근로소득세는 일별 계산 (15만원 공제는 일별 적용)
+5. 준공서류는 기본 템플릿 1개 (발주처별 커스텀은 추후)
+
+---
+
 ## 다음 세션 예정 작업
 
 - [ ] `npm run dev`로 실행 테스트 (실제 UI 동작 확인)
 - [ ] 실제 설계내역서 엑셀로 임포트 + 프리뷰 기능 검증
 - [ ] 기성내역서 엑셀 출력물 검증 + 내보내기 프리뷰 검증
 - [ ] 워크플로우 할일 자동생성 실제 동작 확인
-- [ ] Phase 2 준공서류/노무비 구현 시작
+- [ ] 근로자 등록 → 출역 입력 → 급여 계산 → 엑셀 내보내기 실제 동작 확인
+- [ ] 준공서류 체크리스트 초기화 → 상태 변경 → 엑셀 내보내기 검증
+- [ ] 준공사진첩 자동 생성 구현 (EXIF/PDF)
+- [ ] Phase 3 입찰/계약 + 외부 연동 시작
